@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <title>Panel Badacza - Dodaj Uczestnika</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f9;
+            padding: 40px;
+        }
+        .form-container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            max-width: 400px;
+            margin: 0 auto;
+        }
+        h2 { text-align: center; color: #333; }
+        .input-group { margin-bottom: 20px; }
+        label { display: block; margin-bottom: 5px; color: #666; font-weight: bold;}
+        input, select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        button {
+            width: 100%;
+            padding: 12px;
+            background-color: #007BFF;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+        button:hover { background-color: #0056b3; }
+        #message { margin-top: 15px; text-align: center; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+<div class="form-container">
+    <h2>Nowy Uczestnik Badania</h2>
+    <form id="participantForm">
+        <div class="input-group">
+            <label for="name">Imię i Nazwisko:</label>
+            <input type="text" id="name" required placeholder="np. John Smith">
+        </div>
+        
+        <div class="input-group">
+            <label for="birthday">Data urodzenia:</label>
+            <input type="date" id="birthday" required>
+        </div>
+        
+        <div class="input-group">
+            <label for="gender">Płeć:</label>
+            <select id="gender" required>
+                <option value="">-- Wybierz --</option>
+                <option value="Male">Male</option>
+                <option value="Female">Female</option>
+                <option value="Other">Other</option>
+            </select>
+        </div>
+        
+        <button type="submit">Dodaj do bazy danych</button>
+    </form>
+    <div id="message"></div>
+</div>
+
+<script>
+    document.getElementById('participantForm').addEventListener('submit', async (e) => {
+        e.preventDefault(); // Powstrzymaj przeładowanie strony
+        
+        const messageDiv = document.getElementById('message');
+        messageDiv.innerText = "Wysyłanie...";
+        messageDiv.style.color = "orange";
+
+        // Pobranie danych z inputów
+        const payload = {
+            name: document.getElementById('name').value,
+            birthday: document.getElementById('birthday').value,
+            gender: document.getElementById('gender').value
+        };
+
+        try {
+            // Wysyłamy POST request do naszego FastAPI
+            const response = await fetch('http://127.0.0.1:8000/add-participant', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            const data = await response.json();
+
+            if (response.ok) {
+                messageDiv.innerText = "Sukces: " + data.message;
+                messageDiv.style.color = "green";
+                document.getElementById('participantForm').reset(); // Czyści formularz
+            } else {
+                messageDiv.innerText = "Błąd: " + data.detail;
+                messageDiv.style.color = "red";
+            }
+        } catch (error) {
+            messageDiv.innerText = "Błąd połączenia z serwerem backendowym!";
+            messageDiv.style.color = "red";
+        }
+    });
+</script>
+
+</body>
+</html>
