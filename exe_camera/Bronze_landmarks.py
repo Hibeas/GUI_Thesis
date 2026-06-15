@@ -1,0 +1,166 @@
+import cv2
+import threading
+import mediapipe as mp
+import json
+import time
+from confluent_kafka import Producer
+import boto3
+import os
+from mediapipe.tasks import python
+from mediapipe.tasks.python import vision
+
+# ======================================================================
+# File: Bronze_landmarks.py
+# ======================================================================
+
+# ==============================================================================
+# --- 1. CONFIGURATION ---
+# ==============================================================================
+STUDENT_ID = "Szymon Skarbek"
+
+KAFKA_SERVER = 'localhost:8081'
+MINIO_URL = 'http://localhost:9005'
+MINIO_ACCESS_KEY = 'admin'
+MINIO_SECRET_KEY = 'password123'
+BUCKET_NAME = "bronze"
+SEGMENT_DURATION = 20 
+
+import sys
+
+def get_base_path():
+    """Dynamically find the absolute path whether running as script or .exe"""
+    if getattr(sys, 'frozen', False):
+        # Running in a PyInstaller bundle
+        return getattr(sys, '_MEIPASS', os.path.dirname(sys.executable))
+    # Running as a normal Python script
+    return os.path.dirname(os.path.abspath(__file__))
+
+# Build absolute paths using the base directory
+BASE_DIR = get_base_path()
+MODEL_PATH = os.path.join(BASE_DIR, 'Models', 'face_landmarker.task')
+
+# Temporary videos can stay in the current working directory or be forced absolute
+TEMP_DIR = os.path.join(os.getcwd(), "temp_videos")
+os.makedirs(TEMP_DIR, exist_ok=True)
+
+# Shared memory variables for FastAPI streaming
+latest_frame = None
+frame_lock = threading.Lock()
+stop_event = threading.Event() # <--- DODAJ TO
+
+# Landmark initialization
+base_options = python.BaseOptions(model_asset_path=MODEL_PATH)
+options = vision.FaceLandmarkerOptions(
+    base_options=base_options,
+    output_face_blendshapes=True,
+    output_facial_transformation_matrixes=True,
+    num_faces=1)
+detector = vision.FaceLandmarker.create_from_options(options)
+
+s3_client = boto3.client('s3', endpoint_url=MINIO_URL, 
+                        aws_access_key_id=MINIO_ACCESS_KEY, 
+                        aws_secret_access_key=MINIO_SECRET_KEY)
+producer = Producer({'bootstrap.servers': KAFKA_SERVER})
+
+def delivery_report(err, msg):
+    if err is not None: 
+        print(f"Kafka Error: {err}")
+
+def upload_video_segment(file_path, filename):
+    try:
+        s3_client.upload_file(file_path, BUCKET_NAME, f"video/{STUDENT_ID}/{filename}")
+        if os.path.exists(file_path): 
+            os.remove(file_path)
+            print(f"Successfully deleted local temp file: {file_path}")
+    except Exception as e: 
+        print(f"S3 Error: {e}")
+
+def run_landmarks():
+    global latest_frame
+    cap = cv2.VideoCapture(0)
+    fourcc = cv2.VideoWriter_fourcc(*'XVID')
+
+    print("Starting camera with Blendshapes support... press 'q' to quit.")
+    stop_event.clear() # <--- DODAJ: Opuść flagę przed startem
+    
+    try:
+        while cap.isOpened():
+            if stop_event.is_set(): # <--- DODAJ: Sprawdzaj flagę
+                break
+
+            ret, frame = cap.read()
+            if not ret: break
+            
+            timestamp = int(time.time())
+            filename = f"vid_{timestamp}.avi"
+            local_path = os.path.join(TEMP_DIR, f"temp_{filename}")
+            
+            out = cv2.VideoWriter(local_path, fourcc, 20.0, (640, 480))
+            segment_end_time = time.time() + SEGMENT_DURATION
+            
+            while time.time() < segment_end_time:
+                if stop_event.is_set(): # <--- DODAJ: Sprawdzaj flagę w wewnętrznej pętli
+                    break
+                ret, frame = cap.read()
+                if not ret: break
+                
+                out.write(frame)
+
+                # MediaPipe Processing
+                rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
+                detection_result = detector.detect(mp_image)
+                
+                blendshapes_data = {}
+                if detection_result.face_blendshapes:
+                    blendshapes_data = {b.category_name: round(float(b.score), 3) 
+                            for b in detection_result.face_blendshapes[0]}
+                    
+                    coords = [{"x": l.x, "y": l.y, "z": l.z} for l in detection_result.face_landmarks[0]]
+                    
+                    data = {
+                        "student_id": STUDENT_ID,
+                        "ts": time.time()*1000,
+                        "landmarks": coords,
+                        "blendshapes": blendshapes_data
+                    }
+                    
+                    producer.produce('face-landmarks', json.dumps(data).encode('utf-8'), callback=delivery_report)
+                    producer.poll(0)
+                
+                # Visuals
+                if blendshapes_data:
+                    smile = blendshapes_data.get('mouthSmileLeft', 0)
+                    cv2.putText(frame, f"SMILE: {int(smile*100)}%", (20, 50), 2, 1, (0,255,0), 2)
+
+                cv2.imshow('Blendshape Ingest', frame)
+                
+                # Provide frame to FastAPI
+                ret, buffer = cv2.imencode('.jpg', frame)
+                if ret:
+                    with frame_lock:
+                        latest_frame = buffer.tobytes()
+
+                # CRITICAL FIX: Use break instead of os._exit(0)
+                if cv2.waitKey(1) & 0xFF == ord('q'):
+                    cap.release()
+                    out.release()
+                    cv2.destroyAllWindows()
+                    break
+
+            out.release()
+            threading.Thread(target=upload_video_segment, args=(local_path, filename)).start()
+            
+            # If 'q' was pressed, break out of outer loop too
+            if not cap.isOpened():
+                break
+
+    except Exception as e:
+        print(f"Error: {e}")
+    finally:
+        cap.release()
+        cv2.destroyAllWindows()
+        producer.flush()
+        
+if __name__ == "__main__":
+    run_landmarks()

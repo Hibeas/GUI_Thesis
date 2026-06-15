@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Panel Badania Biometrycznego</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f9;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            color: #333;
+        }
+        .container {
+            background-color: white;
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+        h1 { margin-bottom: 30px; }
+        button {
+            padding: 15px 30px;
+            font-size: 18px;
+            font-weight: bold;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            margin: 10px;
+            transition: 0.3s;
+        }
+        #startBtn { background-color: #4CAF50; color: white; }
+        #startBtn:hover { background-color: #45a049; }
+        #stopBtn { background-color: #f44336; color: white; }
+        #stopBtn:hover { background-color: #da190b; }
+        #status {
+            margin-top: 20px;
+            font-weight: bold;
+            color: #555;
+        }
+        #repairBtn { background-color: #ff9800; color: white; }
+        #repairBtn:hover { background-color: #e68a00; }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>Panel Sterowania Badaniem</h1>
+        <button id="startBtn" onclick="startBadanie()">START BADANIA</button>
+        <button id="stopBtn" onclick="stopBadanie()">STOP</button>
+        <button id="repairBtn" onclick="repairBadanie()">NAPRAW</button>
+        <div id="status">Status: Oczekuje...</div>
+        <h3>Podgląd kamery:</h3>
+<img src="/video_feed" width="640" height="480" />
+    </div>
+
+    <script>
+        async function repairBadanie() {
+            document.getElementById('status').innerText = 'Status: Restartowanie systemów...';
+            try {
+                const response = await fetch('/repair', { method: 'POST' });
+                const data = await response.json();
+                document.getElementById('status').innerText = 'Status: ' + data.message;
+                document.getElementById('status').style.color = '#ff9800';
+            } catch (error) {
+                document.getElementById('status').innerText = 'Status: Błąd połączenia z serwerem.';
+                document.getElementById('status').style.color = 'red';
+            }
+        }
+
+        async function startBadanie() {
+            document.getElementById('status').innerText = 'Status: Uruchamianie procesów...';
+            try {
+                const response = await fetch('/start', { method: 'POST' });
+                const data = await response.json();
+                document.getElementById('status').innerText = 'Status: ' + data.message;
+                document.getElementById('status').style.color = '#4CAF50';
+            } catch (error) {
+                document.getElementById('status').innerText = 'Status: Błąd połączenia z serwerem.';
+                document.getElementById('status').style.color = 'red';
+            }
+        }
+
+        async function stopBadanie() {
+            document.getElementById('status').innerText = 'Status: Zatrzymywanie procesów...';
+            try {
+                const response = await fetch('/stop', { method: 'POST' });
+                const data = await response.json();
+                document.getElementById('status').innerText = 'Status: ' + data.message;
+                document.getElementById('status').style.color = '#f44336';
+            } catch (error) {
+                document.getElementById('status').innerText = 'Status: Błąd połączenia z serwerem.';
+                document.getElementById('status').style.color = 'red';
+            }
+        }
+    </script>
+</body>
+</html>
