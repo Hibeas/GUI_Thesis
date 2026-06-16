@@ -5,7 +5,7 @@ conn = psycopg2.connect(dbname="experiment_db", user="admin", password="password
 cur = conn.cursor()
 
 # Select and print the contents of each table
-tables = ["participant", "participation", "session"]
+tables = ["participant", "participation", "session", "station"]
 for table in tables:
     print(f"\n--- Zawartość tabeli: {table} ---")
     query = f'SELECT * FROM "{table}";'
