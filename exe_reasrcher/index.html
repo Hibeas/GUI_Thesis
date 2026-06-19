@@ -77,21 +77,57 @@
         </form>
     </div>
 
-    <div class="section">
-        <h2>Aktywne Stanowiska (Tylko uruchomione)</h2>
-        <table>
-            <thead>
-                <tr>
-                    <th style="width: 30%;">ID Stanowiska</th>
-                    <th style="width: 70%;">Przypisany Uczestnik (Automatyczny zapis)</th>
-                </tr>
-            </thead>
-            <tbody id="stations-table-body">
-                </tbody>
-        </table>
-    </div>
+<div class="section">
+    <h2>Aktywne Stanowiska</h2>
+    <table id="stations-table">
+        <thead>
+            <tr>
+                <th style="width: 30%;">ID Stanowiska</th>
+                <th style="width: 70%;">Przypisany Uczestnik</th>
+            </tr>
+        </thead>
+        <tbody id="stations-table-body">
+            </tbody>
+    </table>
+    
+    <button id="confirm-btn" style="margin-top: 15px; width: 100%;">POTWIERDŹ PRZYPISANIA</button>
+</div>
 
 <script>
+    // Zmienna przechowująca stan zmian
+    let pendingChanges = {};
+
+    function handleParticipantChange(stationCode, participantId) {
+        // Zapisujemy zmianę w pamięci podręcznej, nie wysyłamy jeszcze do bazy
+        pendingChanges[stationCode] = participantId;
+        console.log("Zmiana oczekująca:", pendingChanges);
+    }
+
+    document.getElementById('confirm-btn').addEventListener('click', async () => {
+        const sessionId = document.getElementById('session-select').value;
+        if (!sessionId) {
+            alert("Najpierw wybierz sesję!");
+            return;
+        }
+
+        // Wysyłamy wszystkie zmiany do backendu
+        for (const [stationCode, participantId] of Object.entries(pendingChanges)) {
+            await fetch('http://localhost:8000/api/stations/assign', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    station_code: stationCode,
+                    participant_id: participantId,
+                    session_id: parseInt(sessionId)
+                })
+            });
+        }
+
+        alert("Przypisania zostały potwierdzone!");
+        pendingChanges = {}; // Czyścimy pamięć zmian
+        await loadStations(); // Odśwież widok
+    });
+    
     let allSessions = [];
     let allParticipants = [];
 

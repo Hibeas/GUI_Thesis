@@ -1,0 +1,1 @@
+ssh -L 5432:localhost:5432 -L 9050:localhost:9050 sskarbek@153.19.52.9
