@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <title>Panel Badacza (Researcher GUI)</title>
+    <style>
+        body {
+            font-family: monospace;
+            background-color: #ffffff;
+            color: #000000;
+            padding: 20px;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        h1 { margin-bottom: 5px; text-transform: uppercase; }
+        h3 { margin-top: 0; font-weight: normal; color: #555; }
+        
+        .section {
+            border: 1px solid #000;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+        
+        label { font-weight: bold; display: block; margin-bottom: 5px; margin-top: 10px; }
+        input, select, button {
+            font-family: monospace;
+            padding: 8px;
+            border: 1px solid #000;
+            background-color: #fff;
+            color: #000;
+            width: 100%;
+            box-sizing: border-box;
+            margin-bottom: 10px;
+        }
+        button {
+            background-color: #000;
+            color: #fff;
+            cursor: pointer;
+            text-transform: uppercase;
+            font-weight: bold;
+        }
+        button:hover { background-color: #333; }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+        th, td {
+            border: 1px solid #000;
+            padding: 10px;
+            text-align: left;
+        }
+        th { background-color: #f0f0f0; }
+        .table-select { margin: 0; padding: 4px; width: 100%; font-family: monospace; }
+    </style>
+</head>
+<body>
+
+    <div class="section" id="current-session-info">
+        <h1 id="display-experiment">Brak wybranego eksperymentu</h1>
+        <h3 id="display-details">Data: --- | Lokalizacja: ---</h3>
+        
+        <label for="session-select">Wybierz eksperyment z bazy:</label>
+        <select id="session-select">
+            <option value="">-- Wybierz sesję --</option>
+        </select>
+    </div>
+
+    <div class="section">
+        <h2>Utwórz nowy eksperyment</h2>
+        <form id="new-session-form">
+            <input type="text" id="new-exp-type" placeholder="Nazwa / Typ eksperymentu (np. watching videos)" required>
+            <input type="date" id="new-exp-date" required>
+            <input type="text" id="new-exp-loc" placeholder="Lokalizacja (np. Politechnika Gdanska)" required>
+            <button type="submit">Dodaj sesję</button>
+        </form>
+    </div>
+
+    <div class="section">
+        <h2>Dodaj nowego uczestnika</h2>
+        <form id="new-participant-form">
+            <input type="text" id="new-participant-name" placeholder="Imię i nazwisko" required>
+            <input type="date" id="new-participant-birth" required>
+            <select id="new-participant-gender" required>
+                <option value="">-- Wybierz płeć --</option>
+                <option value="Male">Mężczyzna</option>
+                <option value="Female">Kobieta</option>
+                <option value="Other">Inna</option>
+            </select>
+            <button type="submit">Zapisz uczestnika</button>
+        </form>
+    </div>
+
+    <div class="section">
+        <h2>Aktywne Stanowiska</h2>
+        <table id="stations-table">
+            <thead>
+                <tr>
+                    <th style="width: 30%;">ID Stanowiska</th>
+                    <th style="width: 70%;">Przypisany Uczestnik</th>
+                </tr>
+            </thead>
+            <tbody id="stations-table-body">
+            </tbody>
+        </table>
+        
+        <button id="confirm-btn" style="margin-top: 15px; width: 100%;">POTWIERDŹ PRZYPISANIA</button>
+    </div>
+
+<script>
+    let pendingChanges = {};
+    let allSessions = [];
+    let allParticipants = [];
+
+    function handleParticipantChange(stationCode, participantId) {
+        pendingChanges[stationCode] = participantId;
+    }
+
+    document.getElementById('new-participant-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
+        const payload = {
+            name: document.getElementById('new-participant-name').value,
+            birthday: document.getElementById('new-participant-birth').value,
+            gender: document.getElementById('new-participant-gender').value
+        };
+        
+        const response = await fetch('/api/participants', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        
+        if (response.ok) {
+            document.getElementById('new-participant-form').reset();
+            await loadParticipants();
+            alert("Uczestnik dodany pomyślnie!");
+        } else {
+            alert("Błąd podczas zapisu uczestnika.");
+        }
+    });
+
+    document.getElementById('confirm-btn').addEventListener('click', async () => {
+        const sessionId = document.getElementById('session-select').value;
+        if (!sessionId) {
+            alert("Najpierw wybierz sesję!");
+            return;
+        }
+
+        for (const [stationCode, participantId] of Object.entries(pendingChanges)) {
+            await fetch('/api/stations/assign', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    station_code: stationCode,
+                    participant_id: participantId,
+                    session_id: parseInt(sessionId)
+                })
+            });
+        }
+
+        alert("Przypisania zostały potwierdzone!");
+        pendingChanges = {};
+        await loadStations();
+    });
+
+    async function loadParticipants() {
+        const response = await fetch('/api/participants');
+        allParticipants = await response.json();
+    }
+
+    async function loadSessions() {
+        const response = await fetch('/api/sessions');
+        allSessions = await response.json();
+        const select = document.getElementById('session-select');
+        select.innerHTML = '<option value="">-- Wybierz sesję --</option>';
+        
+        allSessions.forEach(session => {
+            const option = document.createElement('option');
+            option.value = session.sessionid;
+            option.textContent = `ID: ${session.sessionid} - ${session.experiment_type}`;
+            select.appendChild(option);
+        });
+    }
+
+    async function loadStations() {
+        const response = await fetch('/api/stations');
+        const stations = await response.json();
+        const tbody = document.getElementById('stations-table-body');
+        tbody.innerHTML = '';
+        
+        if (stations.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="2" style="text-align:center; color:#666;">Brak uruchomionych (aktywnych) stacji w tej chwili.</td></tr>';
+            return;
+        }
+
+        stations.forEach(st => {
+            const tr = document.createElement('tr');
+            let selectHtml = `<select class="table-select" onchange="handleParticipantChange('${st.station_code}', this.value)">`;
+            selectHtml += '<option value="">-- Brak (Wolne stanowisko) --</option>';
+            
+            allParticipants.forEach(p => {
+                const isSelected = (p.id === st.participant_id) ? 'selected' : '';
+                selectHtml += `<option value="${p.id}" ${isSelected}>${p.name} (ID: ${p.id})</option>`;
+            });
+            selectHtml += '</select>';
+
+            tr.innerHTML = `<td><strong>${st.station_code}</strong></td><td>${selectHtml}</td>`;
+            tbody.appendChild(tr);
+        });
+    }
+
+    document.getElementById('session-select').addEventListener('change', (e) => {
+        const selectedId = e.target.value;
+        const session = allSessions.find(s => s.sessionid == selectedId);
+        if (session) {
+            document.getElementById('display-experiment').innerText = session.experiment_type;
+            document.getElementById('display-details').innerText = `Data: ${session.session_date} | Lokalizacja: ${session.location}`;
+        } else {
+            document.getElementById('display-experiment').innerText = "Brak wybranego eksperymentu";
+            document.getElementById('display-details').innerText = "Data: --- | Lokalizacja: ---";
+        }
+    });
+
+    document.getElementById('new-session-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const payload = {
+            experiment_type: document.getElementById('new-exp-type').value,
+            session_date: document.getElementById('new-exp-date').value,
+            location: document.getElementById('new-exp-loc').value
+        };
+        await fetch('/api/sessions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        document.getElementById('new-session-form').reset();
+        await loadSessions();
+    });
+
+    window.onload = async () => {
+        await loadParticipants();
+        await loadSessions();
+        await loadStations();
+        setInterval(loadStations, 5000); // Poll active stations every 5 seconds
+    };
+</script>
+</body>
+</html>

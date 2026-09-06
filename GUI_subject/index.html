@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Panel Uczestnika</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f9;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            color: #333;
+        }
+        .container {
+            background-color: white;
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            text-align: center;
+            max-width: 700px;
+        }
+        h1 { margin-bottom: 10px; }
+        h2 { color: #555; margin-bottom: 20px; }
+        .cam-btn {
+            padding: 12px 24px;
+            font-size: 16px;
+            font-weight: bold;
+            background-color: #2196F3;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: 0.3s;
+            margin-bottom: 20px;
+        }
+        .cam-btn:hover { background-color: #0b7dda; }
+        #status { font-weight: bold; margin-bottom: 20px; }
+        #cameraContainer { display: none; } /* Hidden by default */
+        img { border: 2px solid #ccc; border-radius: 8px; }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>Badanie Biometryczne</h1>
+        <h2 id="participantId">Numer Uczestnika: Oczekuje...</h2>
+        <div id="status">Status: Oczekiwanie na badacza</div>
+        
+        <button class="cam-btn" onclick="toggleCamera()">Pokaż / Ukryj Podgląd Kamery</button>
+        
+        <div id="cameraContainer">
+            <img id="videoStream" src="" width="640" height="480" alt="Brak podglądu z kamery" />
+        </div>
+    </div>
+
+    <script>
+        let cameraVisible = false;
+
+        function toggleCamera() {
+            const container = document.getElementById('cameraContainer');
+            const videoStream = document.getElementById('videoStream');
+            cameraVisible = !cameraVisible;
+            
+            if (cameraVisible) {
+                container.style.display = 'block';
+                videoStream.src = '/video_feed'; // Start pulling the stream
+            } else {
+                container.style.display = 'none';
+                videoStream.src = ''; // Stop pulling the stream to save resources
+            }
+        }
+
+        async function checkStatus() {
+            try {
+                const response = await fetch('/status');
+                const data = await response.json();
+                
+                document.getElementById('participantId').innerText = "Numer Uczestnika: " + data.subject_id;
+                
+                const statusElem = document.getElementById('status');
+                if (data.is_running) {
+                    statusElem.innerText = 'Status: Badanie w toku (Nagrywanie)';
+                    statusElem.style.color = '#4CAF50';
+                } else {
+                    statusElem.innerText = 'Status: Oczekiwanie na badacza...';
+                    statusElem.style.color = '#ff9800';
+                }
+            } catch (error) {
+                document.getElementById('status').innerText = 'Status: Brak połączenia z systemem.';
+                document.getElementById('status').style.color = 'red';
+            }
+        }
+
+        // Check backend status every 2 seconds
+        setInterval(checkStatus, 2000);
+        checkStatus();
+    </script>
+</body>
+</html>
