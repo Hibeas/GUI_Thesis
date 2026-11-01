@@ -26,8 +26,11 @@ s3_client = boto3.client('s3', endpoint_url=config.MINIO_URL,
                         aws_secret_access_key=config.MINIO_SECRET_KEY)
 
 # Initialize Kafka Producer
-producer = Producer({'bootstrap.servers': config.KAFKA_SERVER})
-
+# W pliku bronze_landmarks.py:
+producer = Producer({
+    'bootstrap.servers': config.KAFKA_SERVER,
+    'broker.address.family': 'v4'  # Wymusza czyste połączenie po IPv4 przez tunel
+})
 # Ensure temp directory exists
 os.makedirs(config.TEMP_DIR, exist_ok=True)
 
@@ -117,7 +120,6 @@ def run_landmarks(session_config: dict):
                     
                     data = {
                         "participation_id": participant_id,
-                        "experiment": session_config.get("experiment_id", "default"),
                         "ts": time.time()*1000,
                         "landmarks": coords,
                         "blendshapes": blendshapes_data
@@ -130,8 +132,6 @@ def run_landmarks(session_config: dict):
                 if blendshapes_data:
                     smile = blendshapes_data.get('mouthSmileLeft', 0)
                     cv2.putText(frame, f"SMILE: {int(smile*100)}%", (20, 50), 2, 1, (0,255,0), 2)
-
-                cv2.imshow('Blendshape Ingest', frame)
                 
                 # Provide frame to FastAPI
                 ret, buffer = cv2.imencode('.jpg', frame)

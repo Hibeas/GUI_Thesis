@@ -10,12 +10,13 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
+from typing import List, Optional
+from datetime import datetime
 
 import config
 
 app = FastAPI(title="Researcher Control API")
 
-# Enable CORS for cross-origin requests
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -29,21 +30,20 @@ app.add_middleware(
 # ==============================================================================
 
 class ParticipantCreate(BaseModel):
-    """Payload model for registering a new study participant."""
     name: str
     birthday: str
     gender: str
 
-class SessionCreate(BaseModel):
-    """Payload model for creating a new experimental session."""
-    experiment_type: str
-    session_date: str
-    location: str
-
-class AssignParticipantPayload(BaseModel):
-    """Payload model for assigning a participant and session to an active station."""
+class StationAssignment(BaseModel):
     station_code: str
     participant_id: str
+
+class SessionStart(BaseModel):
+    experiment_type: str
+    location: str
+    assignments: List[StationAssignment]
+
+class SessionStop(BaseModel):
     session_id: int
 
 # ==============================================================================
@@ -51,12 +51,6 @@ class AssignParticipantPayload(BaseModel):
 # ==============================================================================
 
 def get_db_connection():
-    """
-    Establishes and returns a new connection to the PostgreSQL database.
-    
-    Returns:
-        psycopg2.extensions.connection: Active database connection instance.
-    """
     return psycopg2.connect(
         dbname=config.DB_NAME,
         user=config.DB_USER,
@@ -71,7 +65,6 @@ def get_db_connection():
 
 @app.get("/", response_class=HTMLResponse)
 async def read_root():
-    """Serves the Researcher control panel user interface (index.html)."""
     html_path = os.path.join(config.BASE_DIR, "index.html")
     if not os.path.exists(html_path):
         raise HTTPException(status_code=404, detail="index.html dashboard file not found.")
@@ -80,12 +73,6 @@ async def read_root():
 
 @app.get("/api/participants")
 async def get_participants():
-    """
-    Retrieves all registered participants ordered by name.
-    
-    Returns:
-        list: A list of dicts containing participant ID and name.
-    """
     try:
         conn = get_db_connection()
         cur = conn.cursor()
@@ -100,12 +87,6 @@ async def get_participants():
 
 @app.post("/api/participants")
 async def add_participant(participant: ParticipantCreate):
-    """
-    Inserts a new participant record into the database.
-    
-    Args:
-        participant (ParticipantCreate): The participant details payload.
-    """
     try:
         conn = get_db_connection()
         cur = conn.cursor()
@@ -120,23 +101,18 @@ async def add_participant(participant: ParticipantCreate):
 
 @app.get("/api/sessions")
 async def get_sessions():
-    """
-    Retrieves all experimental sessions ordered by most recent session ID.
-    
-    Returns:
-        list: A list of dicts containing session details.
-    """
     try:
         conn = get_db_connection()
         cur = conn.cursor()
-        cur.execute('SELECT sessionid, experiment_type, session_date, location FROM "session" ORDER BY sessionid DESC;')
+        cur.execute('SELECT sessionid, experiment_type, location, start_time, end_time FROM "session" ORDER BY sessionid DESC;')
         rows = cur.fetchall()
         sessions = [
             {
                 "sessionid": row[0],
                 "experiment_type": row[1],
-                "session_date": str(row[2]),
-                "location": row[3]
+                "location": row[2],
+                "start_time": str(row[3]) if row[3] else None,
+                "end_time": str(row[4]) if row[4] else None
             } for row in rows
         ]
         cur.close()
@@ -145,103 +121,94 @@ async def get_sessions():
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Database error: {e}")
 
-@app.post("/api/sessions")
-async def create_session(session: SessionCreate):
-    """
-    Creates a new experiment session in the database.
-    
-    Args:
-        session (SessionCreate): Session payload metadata.
-    """
+# W pliku app.py:
+
+@app.post("/api/sessions/start")
+async def start_session(session: SessionStart):
     try:
         conn = get_db_connection()
         cur = conn.cursor()
-        query = 'INSERT INTO "session" (experiment_type, session_date, location) VALUES (%s, %s, %s);'
-        cur.execute(query, (session.experiment_type, session.session_date, session.location))
+        now = datetime.now()
+
+        # 1. Tworzenie sesji
+        query_session = '''
+            INSERT INTO "session" (experiment_type, location, start_time) 
+            VALUES (%s, %s, %s) RETURNING sessionid;
+        '''
+        cur.execute(query_session, (session.experiment_type, session.location, now))
+        session_id = cur.fetchone()[0]
+
+        # 2. Zapis przypisań ze statusem RUNNING
+        for assign in session.assignments:
+            part_id = f"part_{assign.participant_id}_sess_{session_id}_st_{assign.station_code}"
+            query_part = '''
+                INSERT INTO "participation" (participationid, participantid, sessionid, station_code, status)
+                VALUES (%s, %s, %s, %s, 'RUNNING');
+            '''
+            cur.execute(query_part, (part_id, assign.participant_id, session_id, assign.station_code))
+
         conn.commit()
         cur.close()
         conn.close()
-        return {"status": "success", "message": "Session created successfully"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to create session: {e}")
 
+        return {
+            "status": "success", 
+            "session_id": session_id, 
+            "start_time": now.strftime('%Y-%m-%d %H:%M:%S')
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to start session: {e}")
+
+
+@app.post("/api/sessions/stop")
+async def stop_session(payload: SessionStop):
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        now = datetime.now()
+
+        # Zamykamy sesję w tabeli session
+        query_sess = 'UPDATE "session" SET end_time = %s WHERE sessionid = %s;'
+        cur.execute(query_sess, (now, payload.session_id))
+        
+        # Zmieniamy status w participation na STOPPED dla tej sesji
+        query_part = 'UPDATE "participation" SET status = %s WHERE sessionid = %s;'
+        cur.execute(query_part, ('STOPPED', payload.session_id))
+
+        conn.commit()
+        cur.close()
+        conn.close()
+
+        return {
+            "status": "success", 
+            "end_time": now.strftime('%Y-%m-%d %H:%M:%S')
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to stop session: {e}")
+    
 @app.get("/api/stations")
 async def get_stations():
     """
-    Retrieves all currently active physical hardware stations.
-    
-    Returns:
-        list: Active stations and their currently assigned participant IDs.
+    Zwraca tylko stacje, których last_seen jest nie starsze niż 10 sekund.
     """
     try:
         conn = get_db_connection()
         cur = conn.cursor()
-        query = """
-            SELECT 
-                s.station_code, 
-                p.participantid
-            FROM "station" s
-            LEFT JOIN "participation" p ON s.participation_id = p.participationid
-            WHERE s.active = true
-            ORDER BY s.station_code;
-        """
+        query = '''
+            SELECT station_code 
+            FROM "station" 
+            WHERE active = true 
+              AND last_seen >= NOW() - INTERVAL '10 seconds'
+            ORDER BY station_code;
+        '''
         cur.execute(query)
         rows = cur.fetchall()
-        stations = [{"station_code": row[0], "participant_id": str(row[1]) if row[1] else ""} for row in rows]
+        stations = [{"station_code": row[0]} for row in rows]
         cur.close()
         conn.close()
         return stations
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Database error: {e}")
-
-@app.post("/api/stations/assign")
-async def assign_participant(payload: AssignParticipantPayload):
-    """
-    Generates a participation record and binds a participant to an active station.
-    
-    Args:
-        payload (AssignParticipantPayload): Station assignment payload.
-    """
-    try:
-        conn = get_db_connection()
-        cur = conn.cursor()
-
-        if not payload.participant_id:
-            # If empty/unassigned, clear the participation field for this active station
-            cur.execute(
-                'UPDATE "station" SET "participation_id" = NULL WHERE "station_code" = %s AND active = true;', 
-                (payload.station_code,)
-            )
-        else:
-            # Check if participation entry already exists for this subject & session
-            cur.execute(
-                'SELECT participationid FROM "participation" WHERE participantid = %s AND sessionid = %s;',
-                (payload.participant_id, payload.session_id)
-            )
-            result = cur.fetchone()
-            
-            if result:
-                part_id = result[0]
-            else:
-                # Generate unique structured participation ID
-                part_id = f"part_{payload.participant_id}_sess_{payload.session_id}"
-                cur.execute(
-                    'INSERT INTO "participation" (participationid, participantid, sessionid) VALUES (%s, %s, %s);',
-                    (part_id, payload.participant_id, payload.session_id)
-                )
-            
-            # Update participation ID on active station
-            cur.execute(
-                'UPDATE "station" SET "participation_id" = %s WHERE "station_code" = %s AND active = true;', 
-                (part_id, payload.station_code)
-            )
-
-        conn.commit()
-        cur.close()
-        conn.close()
-        return {"status": "success", "participation_id": part_id if payload.participant_id else None}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Assignment failed: {e}")
 
 if __name__ == "__main__":
     uvicorn.run(app, host=config.SERVER_HOST, port=config.SERVER_PORT)

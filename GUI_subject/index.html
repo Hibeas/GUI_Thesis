@@ -3,101 +3,120 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Panel Uczestnika</title>
+    <title>Panel Uczestnika - Stanowisko</title>
     <style>
         body {
-            font-family: Arial, sans-serif;
+            font-family: monospace;
             background-color: #f4f4f9;
             display: flex;
             justify-content: center;
             align-items: center;
-            height: 100vh;
+            min-height: 100vh;
             margin: 0;
-            color: #333;
+            color: #111;
         }
         .container {
-            background-color: white;
-            padding: 40px;
-            border-radius: 12px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            background-color: #ffffff;
+            padding: 30px;
+            border: 2px solid #000;
+            box-shadow: 8px 8px 0px #000;
             text-align: center;
-            max-width: 700px;
+            max-width: 680px;
+            width: 90%;
         }
-        h1 { margin-bottom: 10px; }
-        h2 { color: #555; margin-bottom: 20px; }
-        .cam-btn {
-            padding: 12px 24px;
-            font-size: 16px;
+        .station-badge {
+            display: inline-block;
+            background-color: #000;
+            color: #fff;
+            padding: 6px 16px;
+            font-size: 20px;
             font-weight: bold;
-            background-color: #2196F3;
-            color: white;
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
-            transition: 0.3s;
-            margin-bottom: 20px;
+            text-transform: uppercase;
+            margin-bottom: 15px;
         }
-        .cam-btn:hover { background-color: #0b7dda; }
-        #status { font-weight: bold; margin-bottom: 20px; }
-        #cameraContainer { display: none; } /* Hidden by default */
-        img { border: 2px solid #ccc; border-radius: 8px; }
+        h2 { margin: 10px 0; font-size: 1.1em; color: #444; }
+        .status-box {
+            border: 1px dashed #000;
+            padding: 15px;
+            margin: 15px 0;
+            background-color: #fafafa;
+        }
+        #status { font-weight: bold; font-size: 1.1em; }
+        .camera-box {
+            margin-top: 15px;
+            border: 1px solid #000;
+            background: #000;
+            display: inline-block;
+        }
+        img {
+            display: block;
+            max-width: 100%;
+            height: auto;
+        }
     </style>
 </head>
 <body>
 
     <div class="container">
-        <h1>Badanie Biometryczne</h1>
-        <h2 id="participantId">Numer Uczestnika: Oczekuje...</h2>
-        <div id="status">Status: Oczekiwanie na badacza</div>
+        <div class="station-badge" id="stationCodeDisplay">Stanowisko: ---</div>
         
-        <button class="cam-btn" onclick="toggleCamera()">Pokaż / Ukryj Podgląd Kamery</button>
-        
-        <div id="cameraContainer">
-            <img id="videoStream" src="" width="640" height="480" alt="Brak podglądu z kamery" />
+        <h2 id="participantId">Przypisany Uczestnik: Oczekiwanie...</h2>
+
+        <div class="status-box">
+            <div id="status">Status: Łączenie z systemem...</div>
+            <div id="experimentInfo" style="margin-top: 8px; color: #555;">Eksperyment: Brak aktywnych informacji</div>
+        </div>
+
+        <div>
+            <label style="font-weight: bold; display: block; margin-bottom: 8px;">Podgląd Kamery Stanowiska:</label>
+            <div class="camera-box">
+                <img id="videoStream" src="" width="640" height="480" alt="Brak sygnału z kamery" />
+            </div>
         </div>
     </div>
 
-    <script>
-        let cameraVisible = false;
+<script>
+    let isStreamActive = false;
 
-        function toggleCamera() {
-            const container = document.getElementById('cameraContainer');
-            const videoStream = document.getElementById('videoStream');
-            cameraVisible = !cameraVisible;
+    async function checkStatus() {
+        try {
+            const response = await fetch('/status');
+            const data = await response.json();
             
-            if (cameraVisible) {
-                container.style.display = 'block';
-                videoStream.src = '/video_feed'; // Start pulling the stream
-            } else {
-                container.style.display = 'none';
-                videoStream.src = ''; // Stop pulling the stream to save resources
-            }
-        }
+            document.getElementById('stationCodeDisplay').innerText = "Stanowisko: " + data.station_code;
+            document.getElementById('participantId').innerText = "Przypisany Uczestnik: " + (data.subject_id || "Brak");
+            
+            const statusElem = document.getElementById('status');
+            const expInfo = document.getElementById('experimentInfo');
+            const videoElem = document.getElementById('videoStream');
 
-        async function checkStatus() {
-            try {
-                const response = await fetch('/status');
-                const data = await response.json();
-                
-                document.getElementById('participantId').innerText = "Numer Uczestnika: " + data.subject_id;
-                
-                const statusElem = document.getElementById('status');
-                if (data.is_running) {
-                    statusElem.innerText = 'Status: Badanie w toku (Nagrywanie)';
-                    statusElem.style.color = '#4CAF50';
-                } else {
-                    statusElem.innerText = 'Status: Oczekiwanie na badacza...';
-                    statusElem.style.color = '#ff9800';
+            if (data.is_running) {
+                statusElem.innerText = 'STATUS: EKSPERYMENT W TOKU (NAGRYWANIE)';
+                statusElem.style.color = '#008000';
+                expInfo.innerText = `Eksperyment: ${data.experiment_id}`;
+
+                if (!isStreamActive) {
+                    videoElem.src = '/video_feed';
+                    isStreamActive = true;
                 }
-            } catch (error) {
-                document.getElementById('status').innerText = 'Status: Brak połączenia z systemem.';
-                document.getElementById('status').style.color = 'red';
-            }
-        }
+            } else {
+                statusElem.innerText = 'STATUS: Stanowisko Aktywne (Oczekiwanie na badacza)';
+                statusElem.style.color = '#000000';
+                expInfo.innerText = 'Eksperyment nie został jeszcze skonfigurowany.';
 
-        // Check backend status every 2 seconds
-        setInterval(checkStatus, 2000);
-        checkStatus();
-    </script>
+                if (isStreamActive) {
+                    videoElem.src = '';
+                    isStreamActive = false;
+                }
+            }
+        } catch (error) {
+            document.getElementById('status').innerText = 'STATUS: Błąd połączenia z lokalnym serwisem!';
+            document.getElementById('status').style.color = 'red';
+        }
+    }
+
+    setInterval(checkStatus, 2000);
+    checkStatus();
+</script>
 </body>
 </html>

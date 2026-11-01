@@ -1,39 +1,48 @@
 """
 Configuration settings for the Subject Machine.
-Contains network, server, and model parameters.
+Contains network, server, station, and model parameters.
 """
 import os
 import sys
 
 def get_base_path() -> str:
-    """
-    Dynamically find the absolute path whether running as script or .exe.
-    
-    Returns:
-        str: The absolute base path of the application.
-    """
     if getattr(sys, 'frozen', False):
         return getattr(sys, '_MEIPASS', os.path.dirname(sys.executable))
     return os.path.dirname(os.path.abspath(__file__))
 
+# --- Identification ---
+STATION_CODE = "s1"  # Unikalny kod stanowiska dla tej maszyny
+
 # --- Server & Network ---
 FASTAPI_HOST = "0.0.0.0"
-FASTAPI_PORT = 8000
+FASTAPI_PORT = 8001
 
-# --- SSH Tunneling ---
-SSH_USER_HOST = "sskarbek@153.19.52.9"
-SSH_PORT_MAPPINGS = [
-    "-L", "8080:localhost:8080",
-    "-L", "8081:localhost:8081",
-    "-L", "9005:localhost:9005",
-    "-L", "8085:localhost:8085"
+# --- PostgreSQL Direct Connection ---
+DB_NAME = "experiment_db"
+DB_USER = "admin"
+DB_PASSWORD = "password123"
+DB_HOST = "localhost"
+DB_PORT = "5432"
+
+# --- SSH Tunneling Config ---
+SSH_HOST = "153.19.52.9"
+SSH_PORT = 22
+SSH_USER = "sskarbek"
+SSH_PASSWORD = "Szymon2211"
+
+# Porty do przekierowania: (lokalny_port, zdalny_host, zdalny_port)
+SSH_PORTS_MAPPING = [
+    (5432, 'localhost', 5432),  # Tunel bazy danych PostgreSQL
+    (8080, 'localhost', 8080),
+    (8081, 'localhost', 8081),  # Kafka Broker
+    (9005, 'localhost', 9005),  # MinIO Storage
+    (8085, 'localhost', 8085)
 ]
 
-# --- Kafka ---
+# --- Kafka & MinIO ---
 KAFKA_SERVER = 'localhost:8081'
 KAFKA_TOPIC_LANDMARKS = 'face-landmarks'
 
-# --- MinIO / S3 ---
 MINIO_URL = 'http://localhost:9005'
 MINIO_ACCESS_KEY = 'admin'
 MINIO_SECRET_KEY = 'password123'
