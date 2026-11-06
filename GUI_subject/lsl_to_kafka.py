@@ -28,7 +28,6 @@ def run_lsl(session_config: dict):
     Runs until stop_event is set.
     """
     participant_id = session_config.get("subject_id", "unknown_subject")
-    experiment_id = session_config.get("experiment_id", "default")
     
     stop_event.clear()
 
@@ -83,7 +82,6 @@ def run_lsl(session_config: dict):
 
             payload = {
                 "participation_id": participant_id,
-                "experiment": experiment_id,
                 "ts": ts_ms,
                 "hr": 75.0
             }
