@@ -66,8 +66,8 @@ def run_landmarks(session_config: dict):
     """
     global latest_frame
     
-    participant_id = session_config.get("subject_id", "unknown_subject")
-    
+    participant_id = session_config.get("participation_id") or session_config.get("subject_id", "unknown_subject")
+        
     # Initialize MediaPipe
     base_options = python.BaseOptions(model_asset_path=config.MODEL_PATH)
     options = vision.FaceLandmarkerOptions(

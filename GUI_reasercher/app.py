@@ -37,6 +37,7 @@ class ParticipantCreate(BaseModel):
 class StationAssignment(BaseModel):
     station_code: str
     participant_id: str
+    sensor_name: Optional[str] = None
 
 class SessionStart(BaseModel):
     experiment_type: str
@@ -142,10 +143,10 @@ async def start_session(session: SessionStart):
         for assign in session.assignments:
             part_id = f"part_{assign.participant_id}_sess_{session_id}_st_{assign.station_code}"
             query_part = '''
-                INSERT INTO "participation" (participationid, participantid, sessionid, station_code, status)
-                VALUES (%s, %s, %s, %s, 'RUNNING');
+                INSERT INTO "participation" (participationid, participantid, sessionid, station_code, sensor_name, status)
+                VALUES (%s, %s, %s, %s, %s, 'RUNNING');
             '''
-            cur.execute(query_part, (part_id, assign.participant_id, session_id, assign.station_code))
+            cur.execute(query_part, (part_id, assign.participant_id, session_id, assign.station_code, assign.sensor_name))
 
         conn.commit()
         cur.close()

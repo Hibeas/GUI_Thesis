@@ -193,7 +193,7 @@ def heartbeat_loop():
 
             # 2. Sprawdzenie aktywnego zadania w tabeli participation
             query_task = '''
-                SELECT p.participantid, s.experiment_type 
+                SELECT p.participantid, s.experiment_type, p.sensor_name, p.participationid
                 FROM "participation" p
                 JOIN "session" s ON p.sessionid = s.sessionid
                 WHERE p.station_code = %s AND p.status = 'RUNNING'
@@ -208,13 +208,22 @@ def heartbeat_loop():
 
             # 3. Reakcja na stan z bazy danych
             if task:
-                subject_id, exp_type = str(task[0]), str(task[1])
+                subject_id = str(task[0])
+                exp_type = str(task[1])
+                sensor_name = str(task[2]) if task[2] else None
+                participation_id = str(task[3])
+
                 if camera_thread is None or not camera_thread.is_alive():
-                    print(f"[AUTO-START] Wykryto aktywny eksperyment dla uczestnika: {subject_id}")
+                    print(f"[AUTO-START] Wykryto eksperyment | Uczestnik: {subject_id} | Czujnik: {sensor_name}")
                     current_subject_id = subject_id
                     current_experiment_id = exp_type
                     
-                    session_dict = {"subject_id": subject_id, "experiment_id": exp_type}
+                    session_dict = {
+                        "subject_id": subject_id,
+                        "experiment_id": exp_type,
+                        "sensor_name": sensor_name,
+                        "participation_id": participation_id
+                    }
                     start_experiment_pipeline(session_dict)
             else:
                 if camera_thread and camera_thread.is_alive():

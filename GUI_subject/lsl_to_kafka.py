@@ -1,21 +1,21 @@
 """
 Module for streaming LSL biosignals (GSR, PPG) to Kafka.
-Integrated into Subject Machine pipeline.
+Integrated into Subject Machine pipeline with LSL clock synchronization.
 """
 import json
 import time
 import threading
 from confluent_kafka import Producer
-from pylsl import StreamInlet, resolve_streams
+from pylsl import StreamInlet, local_clock, resolve_byprop, resolve_streams
 
 import config
 
 stop_event = threading.Event()
+TOPIC_NAME = getattr(config, 'KAFKA_TOPIC_BIOSIGNALS', 'biosignal-data')
 
-# Mapowanie docelowych kanałów
 TARGET_CHANNELS = {
     "gsr": "GSR_Skin_Conductance",
-    "ppg": "PPG_A1"
+    "ppg": "PPG_A1",
 }
 
 def delivery_report(err, msg):
@@ -24,10 +24,15 @@ def delivery_report(err, msg):
 
 def run_lsl(session_config: dict):
     """
-    Pobiera dane z LSL (Consensys/Shimmer) i wysyła je do Kafki.
-    Runs until stop_event is set.
+    Pobiera nazwę czujnika z session_config['sensor_name'], skanuje sieć LSL,
+    synchronizuje zegar i wysyła próbki do Kafki.
     """
-    participant_id = session_config.get("subject_id", "unknown_subject")
+    participation_id = session_config.get("participation_id") or session_config.get("subject_id", "unknown_subject")
+    sensor_name = session_config.get("sensor_name")
+
+    if not sensor_name:
+        print("[LSL INFO] Nie przypisano czujnika Shimmer dla tej sesji. Pomijanie strumieniowania LSL.")
+        return
     
     stop_event.clear()
 
@@ -36,20 +41,26 @@ def run_lsl(session_config: dict):
         'broker.address.family': 'v4'
     })
 
-    print("[LSL] Skanowanie w poszukiwaniu strumienia LSL Consensys/Shimmer...")
-    streams = resolve_streams(wait_time=3.0)
+    print(f"[LSL] Skanowanie sieci w poszukiwaniu strumienia '{sensor_name}'...")
+    streams = resolve_byprop('name', sensor_name, timeout=5.0)
 
     if not streams:
-        print("[LSL WARNING] Nie wykryto strumieni LSL! Pomijanie nagrywania biosygnałów.")
+        print(f"[LSL ERROR] Strumień '{sensor_name}' nie został znaleziony!")
+        all_streams = resolve_streams(wait_time=2.0)
+        if all_streams:
+            available_names = [s.name() for s in all_streams]
+            print(f"[LSL INFO] Dostępne strumienie w sieci: {available_names}")
+        else:
+            print("[LSL WARNING] Nie wykryto żadnych strumieni LSL.")
         return
 
     shimmer_stream = streams[0]
     inlet = StreamInlet(shimmer_stream)
     info = inlet.info()
 
-    print(f"[LSL] Połączono ze strumieniem: '{info.name()}' ({info.channel_count()} kanałów)")
+    time_offset = time.time() - local_clock()
+    print(f"[LSL] Połączono ze strumieniem: '{info.name()}' ({info.channel_count()} kanałów, {info.nominal_srate()} Hz)")
 
-    # DYNAMICZNE MAPOWANIE KANAŁÓW
     ch_elem = info.desc().child("channels").child("channel")
     available_channels = {}
 
@@ -59,15 +70,20 @@ def run_lsl(session_config: dict):
         ch_elem = ch_elem.next_sibling()
 
     channel_indices = {}
+    missing_channels = []
+
     for json_key, lsl_label in TARGET_CHANNELS.items():
         if lsl_label in available_channels:
             channel_indices[json_key] = (available_channels[lsl_label], lsl_label)
+        else:
+            missing_channels.append(lsl_label)
 
-    if not channel_indices:
-        print("[LSL ERROR] Brak wymaganych kanałów w strumieniu LSL!")
+    if missing_channels:
+        print(f"[LSL ERROR] Brak wymaganych kanałów w strumieniu: {missing_channels}")
+        print(f"[LSL INFO] Dostępne kanały: {list(available_channels.keys())}")
         return
 
-    print(f"[LSL] Rozpoczynanie wysyłania biosygnałów dla uczestnika: {participant_id}...")
+    print(f"[LSL] Rozpoczęto strumieniowanie '{sensor_name}' do Kafki ({TOPIC_NAME}) dla ID: {participation_id}...")
 
     count = 0
     try:
@@ -78,26 +94,30 @@ def run_lsl(session_config: dict):
                 continue
 
             count += 1
-            ts_ms = int(ts_lsl * 1000)
+            ts_ms = int((ts_lsl + time_offset) * 1000)
 
             payload = {
-                "participation_id": participant_id,
+                "participation_id": participation_id,
                 "ts": ts_ms,
                 "hr": 75.0
             }
 
             for json_key, (idx, _) in channel_indices.items():
-                payload[json_key] = round(float(sample[idx]), 2)
+                payload[json_key] = float(sample[idx])
 
             producer.produce(
-                'biosignal-data',
+                TOPIC_NAME,
                 json.dumps(payload).encode('utf-8'),
                 callback=delivery_report
             )
             producer.poll(0)
 
+            if count % 50 == 0:
+                signals_str = " | ".join(f"{k}: {payload[k]:.2f}" for k in channel_indices.keys())
+                print(f"[{info.name()} | {ts_ms}] Sent to Kafka | {signals_str}")
+
     except Exception as e:
         print(f"[LSL PIPELINE ERROR] {e}")
     finally:
         producer.flush()
-        print("[LSL] Strumieniowanie biosygnałów zostało zakończone.")
+        print("[LSL] Strumieniowanie biosygnałów zostało bezpiecznie zakończone.")

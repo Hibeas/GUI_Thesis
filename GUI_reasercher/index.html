@@ -119,12 +119,13 @@
             <input type="text" id="exp-location" placeholder="Lokalizacja (np. Politechnika Gdańska)" required>
 
             <!-- Aktywne Stanowiska -->
-            <label style="margin-top: 15px;">Aktywne Stanowiska (Przypisz Badanego do Każdego Stanowiska):</label>
+            <label style="margin-top: 15px;">Aktywne Stanowiska (Przypisz Badanego i Czujnik):</label>
             <table>
                 <thead>
                     <tr>
-                        <th style="width: 30%;">ID Stanowiska</th>
-                        <th style="width: 70%;">Wybierz Uczestnika</th>
+                        <th style="width: 20%;">Stanowisko</th>
+                        <th style="width: 45%;">Wybierz Uczestnika</th>
+                        <th style="width: 35%;">Czujnik LSL (Shimmer)</th>
                     </tr>
                 </thead>
                 <tbody id="stations-table-body">
@@ -239,34 +240,40 @@
     function renderStationsTable() {
         const tbody = document.getElementById('stations-table-body');
         
-        const currentSelections = {};
-        tbody.querySelectorAll('select').forEach(sel => {
-            if (sel.dataset.stationCode) {
-                currentSelections[sel.dataset.stationCode] = sel.value;
-            }
+        const currentParticipants = {};
+        const currentSensors = {};
+        
+        tbody.querySelectorAll('.station-participant-select').forEach(sel => {
+            currentParticipants[sel.dataset.stationCode] = sel.value;
+        });
+        tbody.querySelectorAll('.station-sensor-input').forEach(inp => {
+            currentSensors[inp.dataset.stationCode] = inp.value;
         });
 
         tbody.innerHTML = '';
         
         if (activeStationsList.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="2" style="text-align:center; color:#666;">Brak aktywnych stacji w bazie danych.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="3" style="text-align:center; color:#666;">Brak aktywnych stacji w bazie danych.</td></tr>';
             return;
         }
 
         activeStationsList.forEach(st => {
             const tr = document.createElement('tr');
-            const savedValue = currentSelections[st.station_code] || '';
+            const savedPart = currentParticipants[st.station_code] || '';
+            const savedSensor = currentSensors[st.station_code] !== undefined ? currentSensors[st.station_code] : 'Shimmer_C1D2';
 
             let selectHtml = `<select class="table-select station-participant-select" data-station-code="${st.station_code}" required>`;
             selectHtml += '<option value="">-- WYBIERZ BADANEGO --</option>';
             
             allParticipants.forEach(p => {
-                const isSelected = (p.id === savedValue) ? 'selected' : '';
+                const isSelected = (p.id === savedPart) ? 'selected' : '';
                 selectHtml += `<option value="${p.id}" ${isSelected}>${p.name} (ID: ${p.id})</option>`;
             });
             selectHtml += '</select>';
 
-            tr.innerHTML = `<td><strong>${st.station_code}</strong></td><td>${selectHtml}</td>`;
+            const sensorInputHtml = `<input type="text" class="table-select station-sensor-input" data-station-code="${st.station_code}" value="${savedSensor}" placeholder="np. Shimmer_C1D2">`;
+
+            tr.innerHTML = `<td><strong>${st.station_code}</strong></td><td>${selectHtml}</td><td>${sensorInputHtml}</td>`;
             tbody.appendChild(tr);
         });
     }
@@ -300,13 +307,18 @@
         }
 
         const location = document.getElementById('exp-location').value.trim();
-        const stationSelects = document.querySelectorAll('.station-participant-select');
+        const stationRows = document.querySelectorAll('#stations-table-body tr');
         const assignments = [];
         const usedParticipantIds = new Set();
 
-        for (const selectElem of stationSelects) {
+        for (const row of stationRows) {
+            const selectElem = row.querySelector('.station-participant-select');
+            const sensorInput = row.querySelector('.station-sensor-input');
+            if (!selectElem) continue;
+
             const stationCode = selectElem.dataset.stationCode;
             const participantId = selectElem.value;
+            const sensorName = sensorInput ? sensorInput.value.trim() : "";
 
             if (!participantId) {
                 alert(`Proszę wybrać badanego dla stanowiska ${stationCode}!`);
@@ -323,7 +335,8 @@
             usedParticipantIds.add(participantId);
             assignments.push({
                 station_code: stationCode,
-                participant_id: participantId
+                participant_id: participantId,
+                sensor_name: sensorName || null
             });
         }
 
