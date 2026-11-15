@@ -94,7 +94,7 @@ def run_lsl(session_config: dict):
                 continue
 
             count += 1
-            ts_ms = int((ts_lsl + time_offset) * 1000)
+            ts_ms = int((ts_lsl + time_offset))
 
             payload = {
                 "participation_id": participation_id,
