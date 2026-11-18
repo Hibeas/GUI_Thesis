@@ -22,7 +22,10 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
 import config
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
+WARSAW_TZ = ZoneInfo("Europe/Warsaw")
 db_pool: Optional[pool.ThreadedConnectionPool] = None
 ssh_tunnels: List[SSHTunnelForwarder] = []
 
@@ -231,7 +234,7 @@ async def start_session(session: SessionStart):
             detail=f"Exceeded maximum allowed stations ({max_stations})."
         )
     try:
-        now = datetime.now()
+        now = datetime.now(WARSAW_TZ).replace(tzinfo=None)
         with get_db_cursor(commit=True) as cur:
             query_session = '''
                 INSERT INTO "session" (experiment_type, location, start_time) 
@@ -259,7 +262,7 @@ async def start_session(session: SessionStart):
 @app.post("/api/sessions/stop")
 async def stop_session(payload: SessionStop):
     try:
-        now = datetime.now()
+        now = datetime.now(WARSAW_TZ).replace(tzinfo=None)
         with get_db_cursor(commit=True) as cur:
             cur.execute('UPDATE "session" SET end_time = %s WHERE sessionid = %s;', (now, payload.session_id))
             cur.execute('UPDATE "participation" SET status = %s WHERE sessionid = %s;', ('STOPPED', payload.session_id))

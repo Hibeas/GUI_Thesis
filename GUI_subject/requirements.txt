@@ -1,0 +1,11 @@
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+pydantic>=2.0.0
+psycopg2-binary>=2.9.9
+sshtunnel>=0.4.0
+opencv-python>=4.10.0
+mediapipe>=0.10.14
+boto3>=1.35.0
+confluent-kafka>=2.5.0
+pylsl>=1.16.2
+tzdata>=2024.1

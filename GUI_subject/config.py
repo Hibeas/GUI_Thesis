@@ -1,6 +1,6 @@
 """
 Configuration settings for the Subject Machine.
-Contains network, server, station, and model parameters.
+Contains network, server, station, LSL, and model parameters.
 """
 import os
 import sys
@@ -10,9 +10,12 @@ def get_base_path() -> str:
         return getattr(sys, '_MEIPASS', os.path.dirname(sys.executable))
     return os.path.dirname(os.path.abspath(__file__))
 
-# --- Identification ---
 # --- Identification & Heartbeat ---
 HEARTBEAT_TIMEOUT_SECONDS = 15  # Po ilu sekundach braku sygnału stacja uznawana jest za wolną
+MAX_STATIONS = 8                # Maksymalna liczba obsługiwanych stanowisk (s1..s8)
+
+# --- LSL Network Configuration ---
+LSL_KNOWN_PEERS = ["153.19.52.45"]  # Adresy IP maszyn udostępniających strumienie LSL (Shimmer)
 
 # --- Server & Network ---
 FASTAPI_HOST = "0.0.0.0"
@@ -23,7 +26,7 @@ DB_NAME = "experiment_db"
 DB_USER = "admin"
 DB_PASSWORD = "password123"
 DB_HOST = "localhost"
-DB_PORT = "5432"
+DB_PORT = 5432
 
 # --- SSH Tunneling Config ---
 SSH_HOST = "153.19.52.9"
@@ -31,18 +34,17 @@ SSH_PORT = 22
 SSH_USER = "sskarbek"
 SSH_PASSWORD = "Szymon2211"
 
-# Porty do przekierowania: (lokalny_port, zdalny_host, zdalny_port)
+# Tylko porty realnie używane przez stanowisko: (lokalny_port, zdalny_host, zdalny_port)
 SSH_PORTS_MAPPING = [
-    (5432, 'localhost', 5432),  # Tunel bazy danych PostgreSQL
-    (8080, 'localhost', 8080),
+    (5432, 'localhost', 5432),  # PostgreSQL
     (8081, 'localhost', 8081),  # Kafka Broker
     (9005, 'localhost', 9005),  # MinIO Storage
-    (8085, 'localhost', 8085)
 ]
 
 # --- Kafka & MinIO ---
 KAFKA_SERVER = 'localhost:8081'
 KAFKA_TOPIC_LANDMARKS = 'face-landmarks'
+KAFKA_TOPIC_BIOSIGNALS = 'biosignal-data'
 
 MINIO_URL = 'http://localhost:9005'
 MINIO_ACCESS_KEY = 'admin'

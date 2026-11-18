@@ -99,6 +99,19 @@
                     videoElem.src = '/video_feed';
                     isStreamActive = true;
                 }
+            } else if (data.upload_status && data.upload_status.is_uploading) {
+                const done = data.upload_status.completed;
+                const total = data.upload_status.total;
+                const currentItem = Math.min(done + 1, total);
+
+                statusElem.innerText = `STATUS: UPLOADING VIDEOS TO SERVER (${currentItem}/${total})`;
+                statusElem.style.color = '#d97706';
+                expInfo.innerText = `Please do not close this window until upload completes (${done}/${total} uploaded).`;
+
+                if (isStreamActive) {
+                    videoElem.src = '';
+                    isStreamActive = false;
+                }
             } else {
                 statusElem.innerText = 'STATUS: Station Active (Waiting for researcher)';
                 statusElem.style.color = '#000000';

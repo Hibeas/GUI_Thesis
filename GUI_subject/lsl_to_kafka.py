@@ -1,14 +1,38 @@
 """
 Module for streaming LSL biosignals (GSR, PPG) to Kafka.
-Integrated into Subject Machine pipeline with LSL clock synchronization.
+Integrated into Subject Machine pipeline with LSL clock synchronization and batching.
 """
 import json
+import os
 import time
 import threading
 from confluent_kafka import Producer
-from pylsl import StreamInlet, local_clock, resolve_byprop, resolve_streams
 
 import config
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
+WARSAW_TZ = ZoneInfo("Europe/Warsaw")
+
+def configure_lsl_peers():
+    """
+    Tworzy/aktualizuje plik lsl_api.cfg na podstawie config.LSL_KNOWN_PEERS
+    i ustawia zmienną środowiskową LSLAPICFG przed załadowaniem pylsl.
+    """
+    peers = getattr(config, 'LSL_KNOWN_PEERS', [])
+    if not peers:
+        return
+    cfg_path = os.path.join(config.BASE_DIR, "lsl_api.cfg")
+    peers_str = ", ".join(peers)
+    try:
+        with open(cfg_path, "w", encoding="utf-8") as f:
+            f.write(f"[lab]\nKnownPeers = {{{peers_str}}}\n")
+        os.environ["LSLAPICFG"] = cfg_path
+    except Exception as e:
+        print(f"[LSL CONFIG WARNING] Nie udało się zapisać lsl_api.cfg: {e}")
+
+configure_lsl_peers()
+from pylsl import StreamInlet, local_clock, resolve_byprop, resolve_streams
 
 stop_event = threading.Event()
 TOPIC_NAME = getattr(config, 'KAFKA_TOPIC_BIOSIGNALS', 'biosignal-data')
@@ -23,25 +47,26 @@ def delivery_report(err, msg):
         print(f"[LSL KAFKA ERROR] {err}")
 
 def run_lsl(session_config: dict):
-    """
-    Pobiera nazwę czujnika z session_config['sensor_name'], skanuje sieć LSL,
-    synchronizuje zegar i wysyła próbki do Kafki.
-    """
     participation_id = session_config.get("participation_id") or session_config.get("subject_id", "unknown_subject")
     sensor_name = session_config.get("sensor_name")
 
     if not sensor_name:
         print("[LSL INFO] Nie przypisano czujnika Shimmer dla tej sesji. Pomijanie strumieniowania LSL.")
         return
-    
+
     stop_event.clear()
 
+    # Grupowanie próbek co 50ms i kompresja LZ4 znacząco zmniejszają ruch przez tunel SSH
     producer = Producer({
         'bootstrap.servers': config.KAFKA_SERVER,
-        'broker.address.family': 'v4'
+        'broker.address.family': 'v4',
+        'compression.type': 'lz4',
+        'linger.ms': 50,
+        'batch.size': 32768,
+        'acks': 1
     })
 
-    print(f"[LSL] Skanowanie sieci w poszukiwaniu strumienia '{sensor_name}'...")
+    print(f"[LSL] Skanowanie sieci (Peers: {getattr(config, 'LSL_KNOWN_PEERS', [])}) w poszukiwaniu '{sensor_name}'...")
     streams = resolve_byprop('name', sensor_name, timeout=5.0)
 
     if not streams:
@@ -58,7 +83,8 @@ def run_lsl(session_config: dict):
     inlet = StreamInlet(shimmer_stream)
     info = inlet.info()
 
-    time_offset = time.time() - local_clock()
+    warsaw_offset_sec = datetime.now(WARSAW_TZ).utcoffset().total_seconds()
+    time_offset = (time.time() + warsaw_offset_sec) - local_clock()
     print(f"[LSL] Połączono ze strumieniem: '{info.name()}' ({info.channel_count()} kanałów, {info.nominal_srate()} Hz)")
 
     ch_elem = info.desc().child("channels").child("channel")
@@ -94,7 +120,7 @@ def run_lsl(session_config: dict):
                 continue
 
             count += 1
-            ts_ms = int((ts_lsl + time_offset))
+            ts_ms = int((ts_lsl + time_offset) * 1000)
 
             payload = {
                 "participation_id": participation_id,
@@ -103,11 +129,11 @@ def run_lsl(session_config: dict):
             }
 
             for json_key, (idx, _) in channel_indices.items():
-                payload[json_key] = float(sample[idx])
+                payload[json_key] = round(float(sample[idx]), 6)
 
             producer.produce(
                 TOPIC_NAME,
-                json.dumps(payload).encode('utf-8'),
+                json.dumps(payload, separators=(',', ':')).encode('utf-8'),
                 callback=delivery_report
             )
             producer.poll(0)
