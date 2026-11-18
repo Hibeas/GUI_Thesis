@@ -1,8 +1,8 @@
 <!DOCTYPE html>
-<html lang="pl">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Panel Badacza (Researcher GUI)</title>
+    <title>Researcher GUI</title>
     <style>
         body {
             font-family: monospace;
@@ -85,71 +85,71 @@
 </head>
 <body>
 
-    <!-- KONFIGURACJA I SELEKCJA EKSPERYMENTU -->
+    <!-- EXPERIMENT CONFIGURATION AND SELECTION -->
     <div class="section">
-        <h2>Konfiguracja Eksperymentu</h2>
+        <h2>Experiment Configuration</h2>
         
         <div class="active-session-banner">
-            <h1 id="display-experiment" style="font-size: 1.2em;">Brak aktywnego eksperymentu</h1>
+            <h1 id="display-experiment" style="font-size: 1.2em;">No active experiment</h1>
             <h3 id="display-details" style="margin:0;">Start: --- | Stop: --- | Session ID: ---</h3>
         </div>
 
         <form id="experiment-form">
             <div class="radio-group">
-                <label><input type="radio" name="mode" value="select" checked id="mode-select"> Wybierz istniejący</label>
-                <label><input type="radio" name="mode" value="new" id="mode-new"> Utwórz nowy</label>
+                <label><input type="radio" name="mode" value="select" checked id="mode-select"> Select existing</label>
+                <label><input type="radio" name="mode" value="new" id="mode-new"> Create new</label>
             </div>
 
-            <!-- Wybór istniejącego eksperymentu -->
+            <!-- Select existing experiment -->
             <div id="container-select">
-                <label for="session-select">Eksperyment z bazy:</label>
+                <label for="session-select">Experiment from database:</label>
                 <select id="session-select">
-                    <option value="">-- Wybierz eksperyment --</option>
+                    <option value="">-- Select experiment --</option>
                 </select>
             </div>
 
-            <!-- Pole nowej nazwy -->
+            <!-- New experiment name field -->
             <div id="container-new" style="display: none;">
-                <label for="exp-type-new">Nowa nazwa / typ eksperymentu:</label>
-                <input type="text" id="exp-type-new" placeholder="np. Watching Videos">
+                <label for="exp-type-new">New experiment name / type:</label>
+                <input type="text" id="exp-type-new" placeholder="e.g., Watching Videos">
             </div>
 
-            <!-- Lokalizacja -->
-            <label for="exp-location">Lokalizacja:</label>
-            <input type="text" id="exp-location" placeholder="Lokalizacja (np. Politechnika Gdańska)" required>
+            <!-- Location -->
+            <label for="exp-location">Location:</label>
+            <input type="text" id="exp-location" placeholder="Location (e.g., Gdańsk University of Technology)" required>
 
-            <!-- Aktywne Stanowiska -->
-            <label style="margin-top: 15px;">Aktywne Stanowiska (Przypisz Badanego i Czujnik):</label>
+            <!-- Active Stations -->
+            <label style="margin-top: 15px;">Active Stations (Assign Participant and Sensor):</label>
             <table>
                 <thead>
                     <tr>
-                        <th style="width: 20%;">Stanowisko</th>
-                        <th style="width: 45%;">Wybierz Uczestnika</th>
-                        <th style="width: 35%;">Czujnik LSL (Shimmer)</th>
+                        <th style="width: 20%;">Station</th>
+                        <th style="width: 45%;">Select Participant</th>
+                        <th style="width: 35%;">LSL Sensor (Shimmer)</th>
                     </tr>
                 </thead>
                 <tbody id="stations-table-body">
                 </tbody>
             </table>
 
-            <button type="submit" id="btn-start" style="margin-top: 10px;">ROZPOCZNIJ EKSPERYMENT</button>
-            <button type="button" id="btn-stop" class="btn-stop" style="margin-top: 10px;">ZATRZYMAJ EKSPERYMENT</button>
+            <button type="submit" id="btn-start" style="margin-top: 10px;">START EXPERIMENT</button>
+            <button type="button" id="btn-stop" class="btn-stop" style="margin-top: 10px;">STOP EXPERIMENT</button>
         </form>
     </div>
 
-    <!-- DODAWANIE PARTICIPANTA -->
+    <!-- ADD PARTICIPANT -->
     <div class="section">
-        <h2>Dodaj nowego uczestnika</h2>
+        <h2>Add New Participant</h2>
         <form id="new-participant-form">
-            <input type="text" id="new-participant-name" placeholder="Imię i nazwisko" required>
+            <input type="text" id="new-participant-name" placeholder="Full name" required>
             <input type="date" id="new-participant-birth" required>
             <select id="new-participant-gender" required>
-                <option value="">-- Wybierz płeć --</option>
-                <option value="Male">Mężczyzna</option>
-                <option value="Female">Kobieta</option>
-                <option value="Other">Inna</option>
+                <option value="">-- Select gender --</option>
+                <option value="Male">Male</option>
+                <option value="Female">Female</option>
+                <option value="Other">Other</option>
             </select>
-            <button type="submit">Zapisz uczestnika</button>
+            <button type="submit">Save Participant</button>
         </form>
     </div>
 
@@ -205,9 +205,9 @@
             document.getElementById('new-participant-form').reset();
             await loadParticipants();
             renderStationsTable();
-            alert("Uczestnik dodany pomyślnie!");
+            alert("Participant added successfully!");
         } else {
-            alert("Błąd podczas zapisu uczestnika.");
+            alert("Error while saving participant.");
         }
     });
 
@@ -221,7 +221,7 @@
         allSessions = await response.json();
         
         const select = document.getElementById('session-select');
-        select.innerHTML = '<option value="">-- Wybierz eksperyment --</option>';
+        select.innerHTML = '<option value="">-- Select experiment --</option>';
         
         allSessions.forEach(session => {
             const option = document.createElement('option');
@@ -253,7 +253,7 @@
         tbody.innerHTML = '';
         
         if (activeStationsList.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="3" style="text-align:center; color:#666;">Brak aktywnych stacji w bazie danych.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="3" style="text-align:center; color:#666;">No active stations in the database.</td></tr>';
             return;
         }
 
@@ -263,7 +263,7 @@
             const savedSensor = currentSensors[st.station_code] !== undefined ? currentSensors[st.station_code] : 'Shimmer_C1D2';
 
             let selectHtml = `<select class="table-select station-participant-select" data-station-code="${st.station_code}" required>`;
-            selectHtml += '<option value="">-- WYBIERZ BADANEGO --</option>';
+            selectHtml += '<option value="">-- SELECT PARTICIPANT --</option>';
             
             allParticipants.forEach(p => {
                 const isSelected = (p.id === savedPart) ? 'selected' : '';
@@ -271,19 +271,19 @@
             });
             selectHtml += '</select>';
 
-            const sensorInputHtml = `<input type="text" class="table-select station-sensor-input" data-station-code="${st.station_code}" value="${savedSensor}" placeholder="np. Shimmer_C1D2">`;
+            const sensorInputHtml = `<input type="text" class="table-select station-sensor-input" data-station-code="${st.station_code}" value="${savedSensor}" placeholder="e.g., Shimmer_C1D2">`;
 
             tr.innerHTML = `<td><strong>${st.station_code}</strong></td><td>${selectHtml}</td><td>${sensorInputHtml}</td>`;
             tbody.appendChild(tr);
         });
     }
 
-    // Uruchomienie eksperymentu
+    // Start experiment
     document.getElementById('experiment-form').addEventListener('submit', async (e) => {
         e.preventDefault();
 
         if (activeStationsList.length === 0) {
-            alert("Brak aktywnych stacji!");
+            alert("No active stations!");
             return;
         }
 
@@ -294,14 +294,14 @@
             const selectedId = document.getElementById('session-select').value;
             const session = allSessions.find(s => s.sessionid == selectedId);
             if (!session) {
-                alert("Wybierz eksperyment z listy!");
+                alert("Please select an experiment from the list!");
                 return;
             }
             expType = session.experiment_type;
         } else {
             expType = document.getElementById('exp-type-new').value.trim();
             if (!expType) {
-                alert("Wpisz nazwę nowego eksperymentu!");
+                alert("Please enter the name of the new experiment!");
                 return;
             }
         }
@@ -321,13 +321,13 @@
             const sensorName = sensorInput ? sensorInput.value.trim() : "";
 
             if (!participantId) {
-                alert(`Proszę wybrać badanego dla stanowiska ${stationCode}!`);
+                alert(`Please select a participant for station ${stationCode}!`);
                 selectElem.focus();
                 return;
             }
 
             if (usedParticipantIds.has(participantId)) {
-                alert(`Uczestnik o ID ${participantId} został przypisany do więcej niż jednego stanowiska!`);
+                alert(`Participant with ID ${participantId} has been assigned to more than one station!`);
                 selectElem.focus();
                 return;
             }
@@ -356,20 +356,20 @@
             const data = await response.json();
             activeSessionId = data.session_id;
 
-            document.getElementById('display-experiment').innerText = `AKTYWNY: ${expType}`;
-            document.getElementById('display-details').innerText = `Start: ${data.start_time} | Stop: W toku... | Session ID: ${activeSessionId}`;
+            document.getElementById('display-experiment').innerText = `ACTIVE: ${expType}`;
+            document.getElementById('display-details').innerText = `Start: ${data.start_time} | Stop: In progress... | Session ID: ${activeSessionId}`;
             
             document.getElementById('btn-start').style.display = 'none';
             document.getElementById('btn-stop').style.display = 'block';
 
             await loadSessions();
-            alert(`Eksperyment rozpoczęty! (ID Sesji: ${activeSessionId})`);
+            alert(`Experiment started! (Session ID: ${activeSessionId})`);
         } else {
-            alert("Błąd podczas uruchamiania eksperymentu.");
+            alert("Error while starting the experiment.");
         }
     });
 
-    // Zatrzymanie eksperymentu
+    // Stop experiment
     document.getElementById('btn-stop').addEventListener('click', async () => {
         if (!activeSessionId) return;
 
@@ -383,16 +383,16 @@
             const data = await response.json();
             
             const currentDetails = document.getElementById('display-details').innerText;
-            document.getElementById('display-details').innerText = currentDetails.replace('Stop: W toku...', `Stop: ${data.end_time}`);
+            document.getElementById('display-details').innerText = currentDetails.replace('Stop: In progress...', `Stop: ${data.end_time}`);
             
             document.getElementById('btn-start').style.display = 'block';
             document.getElementById('btn-stop').style.display = 'none';
 
-            alert(`Eksperyment (ID: ${activeSessionId}) został zakończony o ${data.end_time}`);
+            alert(`Experiment (ID: ${activeSessionId}) ended at ${data.end_time}`);
             activeSessionId = null;
             await loadSessions();
         } else {
-            alert("Błąd podczas zatrzymywania eksperymentu.");
+            alert("Error while stopping the experiment.");
         }
     });
 

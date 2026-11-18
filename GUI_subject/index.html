@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="pl">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Panel Uczestnika - Stanowisko</title>
+    <title>Participant Panel - Station</title>
     <style>
         body {
             font-family: monospace;
@@ -58,19 +58,19 @@
 <body>
 
     <div class="container">
-        <div class="station-badge" id="stationCodeDisplay">Stanowisko: ---</div>
+        <div class="station-badge" id="stationCodeDisplay">Station: ---</div>
         
-        <h2 id="participantId">Przypisany Uczestnik: Oczekiwanie...</h2>
+        <h2 id="participantId">Assigned Participant: Waiting...</h2>
 
         <div class="status-box">
-            <div id="status">Status: Łączenie z systemem...</div>
-            <div id="experimentInfo" style="margin-top: 8px; color: #555;">Eksperyment: Brak aktywnych informacji</div>
+            <div id="status">Status: Connecting to system...</div>
+            <div id="experimentInfo" style="margin-top: 8px; color: #555;">Experiment: No active information</div>
         </div>
 
         <div>
-            <label style="font-weight: bold; display: block; margin-bottom: 8px;">Podgląd Kamery Stanowiska:</label>
+            <label style="font-weight: bold; display: block; margin-bottom: 8px;">Station Camera Preview:</label>
             <div class="camera-box">
-                <img id="videoStream" src="" width="640" height="480" alt="Brak sygnału z kamery" />
+                <img id="videoStream" src="" width="640" height="480" alt="No camera signal" />
             </div>
         </div>
     </div>
@@ -83,26 +83,26 @@
             const response = await fetch('/status');
             const data = await response.json();
             
-            document.getElementById('stationCodeDisplay').innerText = "Stanowisko: " + data.station_code;
-            document.getElementById('participantId').innerText = "Przypisany Uczestnik: " + (data.subject_id || "Brak");
+            document.getElementById('stationCodeDisplay').innerText = "Station: " + data.station_code;
+            document.getElementById('participantId').innerText = "Assigned Participant: " + (data.subject_id || "None");
             
             const statusElem = document.getElementById('status');
             const expInfo = document.getElementById('experimentInfo');
             const videoElem = document.getElementById('videoStream');
 
             if (data.is_running) {
-                statusElem.innerText = 'STATUS: EKSPERYMENT W TOKU (NAGRYWANIE)';
+                statusElem.innerText = 'STATUS: EXPERIMENT IN PROGRESS (RECORDING)';
                 statusElem.style.color = '#008000';
-                expInfo.innerText = `Eksperyment: ${data.experiment_id}`;
+                expInfo.innerText = `Experiment: ${data.experiment_id}`;
 
                 if (!isStreamActive) {
                     videoElem.src = '/video_feed';
                     isStreamActive = true;
                 }
             } else {
-                statusElem.innerText = 'STATUS: Stanowisko Aktywne (Oczekiwanie na badacza)';
+                statusElem.innerText = 'STATUS: Station Active (Waiting for researcher)';
                 statusElem.style.color = '#000000';
-                expInfo.innerText = 'Eksperyment nie został jeszcze skonfigurowany.';
+                expInfo.innerText = 'Experiment has not been configured yet.';
 
                 if (isStreamActive) {
                     videoElem.src = '';
@@ -110,7 +110,7 @@
                 }
             }
         } catch (error) {
-            document.getElementById('status').innerText = 'STATUS: Błąd połączenia z lokalnym serwisem!';
+            document.getElementById('status').innerText = 'STATUS: Connection error with local service!';
             document.getElementById('status').style.color = 'red';
         }
     }
