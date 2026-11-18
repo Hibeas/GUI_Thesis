@@ -231,11 +231,6 @@
         });
     }
 
-    async function loadStations() {
-        const response = await fetch('/api/stations');
-        activeStationsList = await response.json();
-        renderStationsTable();
-    }
 
     function renderStationsTable() {
         const tbody = document.getElementById('stations-table-body');
@@ -391,16 +386,44 @@
             alert(`Experiment (ID: ${activeSessionId}) ended at ${data.end_time}`);
             activeSessionId = null;
             await loadSessions();
+            await loadStations(true);
         } else {
             alert("Error while stopping the experiment.");
+        }
+    });
+    let lastStationsHash = "";
+
+    async function loadStations(forceRender = false) {
+        // Nie odpytuj, jeśli karta jest w tle lub eksperyment już trwa
+        if (document.hidden || activeSessionId !== null) return;
+
+        try {
+            const response = await fetch('/api/stations');
+            const newStations = await response.json();
+            const newHash = JSON.stringify(newStations);
+
+            if (forceRender || newHash !== lastStationsHash) {
+                lastStationsHash = newHash;
+                activeStationsList = newStations;
+                renderStationsTable();
+            }
+        } catch (err) {
+            console.error("Failed to fetch stations:", err);
+        }
+    }
+
+    // Natychmiastowe odświeżenie po powrocie na kartę przeglądarki
+    document.addEventListener("visibilitychange", () => {
+        if (!document.hidden && activeSessionId === null) {
+            loadStations();
         }
     });
 
     window.onload = async () => {
         await loadParticipants();
         await loadSessions();
-        await loadStations();
-        setInterval(loadStations, 5000);
+        await loadStations(true);
+        setInterval(() => loadStations(false), 5000);
     };
 </script>
 </body>

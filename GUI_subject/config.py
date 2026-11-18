@@ -11,7 +11,8 @@ def get_base_path() -> str:
     return os.path.dirname(os.path.abspath(__file__))
 
 # --- Identification ---
-STATION_CODE = "s1"  # Unikalny kod stanowiska dla tej maszyny
+# --- Identification & Heartbeat ---
+HEARTBEAT_TIMEOUT_SECONDS = 15  # Po ilu sekundach braku sygnału stacja uznawana jest za wolną
 
 # --- Server & Network ---
 FASTAPI_HOST = "0.0.0.0"

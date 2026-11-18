@@ -23,6 +23,8 @@ import config as config
 # Shared Thread Control Variables
 camera_thread = None
 lsl_thread = None
+assigned_station_code = None
+is_shutting_down = False
 current_subject_id = "Brak"
 current_experiment_id = "Brak"
 
@@ -100,6 +102,59 @@ def start_ssh_tunnels():
         print("Wszystkie tunele SSH zostały pomyślnie uruchomione.")
     except Exception as e:
         print(f"[SSH ERROR] Nie udało się zestawić tunelu SSH: {e}")
+def claim_available_station() -> str:
+    """
+    Atomowo wyszukuje i rezerwuje stanowisko o najmniejszym numerze,
+    które ma active = false lub nie wysyłało heartbeat przez > HEARTBEAT_TIMEOUT_SECONDS.
+    """
+    timeout_sec = getattr(config, 'HEARTBEAT_TIMEOUT_SECONDS', 15)
+    conn = psycopg2.connect(
+        dbname=config.DB_NAME,
+        user=config.DB_USER,
+        password=config.DB_PASSWORD,
+        host=config.DB_HOST,
+        port=config.DB_PORT
+    )
+    cur = conn.cursor()
+
+    # 1. Szukamy najmniejszego wolnego lub wygasłego stanowiska i blokujemy wiersz
+    query_find = '''
+        SELECT station_code
+        FROM "station"
+        WHERE active = false
+           OR last_seen IS NULL
+           OR last_seen < NOW() - (%s * INTERVAL '1 second')
+        ORDER BY NULLIF(REGEXP_REPLACE(station_code, '[^0-9]', '', 'g'), '')::INT ASC NULLS LAST,
+                 station_code ASC
+        LIMIT 1
+        FOR UPDATE SKIP LOCKED;
+    '''
+    cur.execute(query_find, (timeout_sec,))
+    row = cur.fetchone()
+
+    if row:
+        station_code = row[0]
+        cur.execute(
+            'UPDATE "station" SET active = true, last_seen = NOW() WHERE station_code = %s;',
+            (station_code,)
+        )
+    else:
+        # 2. Fallback: jeśli wszystkie stacje w tabeli są zajęte, tworzymy kolejną (np. s4)
+        cur.execute('''
+            SELECT COALESCE(MAX(NULLIF(REGEXP_REPLACE(station_code, '[^0-9]', '', 'g'), '')::INT), 0) + 1
+            FROM "station";
+        ''')
+        next_num = cur.fetchone()[0]
+        station_code = f"s{next_num}"
+        cur.execute(
+            'INSERT INTO "station" (station_code, active, last_seen) VALUES (%s, true, NOW());',
+            (station_code,)
+        )
+
+    conn.commit()
+    cur.close()
+    conn.close()
+    return station_code
 
 def set_station_inactive():
     """Wymusza zmianę stacji na nieaktywną przy zamknięciu."""
@@ -114,17 +169,18 @@ def set_station_inactive():
         cur = conn.cursor()
         cur.execute(
             'UPDATE "station" SET active = false WHERE station_code = %s;',
-            (config.STATION_CODE,)
+            (assigned_station_code,)
         )
         conn.commit()
         cur.close()
         conn.close()
-        print(f"[DATABASE] Stanowisko {config.STATION_CODE} zostało wyłączone.")
+        print(f"[DATABASE] Stanowisko {assigned_station_code} zostało wyłączone.")
     except Exception as e:
         print(f"[DATABASE ERROR] Błąd wyłączania stacji: {e}")
 
 def cleanup_on_close():
-    global cleaned_up
+    global cleaned_up, is_shutting_down
+    is_shutting_down = True
     with cleanup_lock:
         if cleaned_up:
             return
@@ -144,13 +200,18 @@ def cleanup_on_close():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    global assigned_station_code  # <--- DODAJ TO
     # --- STARTUP ---
     start_ssh_tunnels()
     
+    # Rezerwacja pierwszego wolnego stanowiska w bazie
+    assigned_station_code = claim_available_station()  # <--- DODAJ TO
+    print(f"[STATION] Przydzielono wolne stanowisko: {assigned_station_code}")
+
     # Uruchomienie pętli synchronicznej w tle
     heartbeat_thread = threading.Thread(target=heartbeat_loop, daemon=True)
     heartbeat_thread.start()
-    print(f"[HEARTBEAT] Rozpoczęto wysyłanie sygnału aktywności dla stanowiska {config.STATION_CODE}")
+    print(f"[HEARTBEAT] Rozpoczęto wysyłanie sygnału aktywności dla stanowiska {assigned_station_code}")
 
     # Otwarcie przeglądarki
     threading.Thread(target=open_browser, daemon=True).start()
@@ -159,7 +220,6 @@ async def lifespan(app: FastAPI):
 
     # --- SHUTDOWN ---
     cleanup_on_close()
-
 app = FastAPI(title="Participant GUI API", lifespan=lifespan)
 
 # ==============================================================================
@@ -187,8 +247,8 @@ def heartbeat_loop():
             
             # 1. Odświeżenie Heartbeatu stanowiska
             cur.execute(
-                'UPDATE "station" SET active = true, last_seen = %s WHERE station_code = %s;',
-                (datetime.now(), config.STATION_CODE)
+                'UPDATE "station" SET active = true, last_seen = NOW() WHERE station_code = %s;',
+                (assigned_station_code,)
             )
 
             # 2. Sprawdzenie aktywnego zadania w tabeli participation
@@ -199,7 +259,7 @@ def heartbeat_loop():
                 WHERE p.station_code = %s AND p.status = 'RUNNING'
                 ORDER BY s.sessionid DESC LIMIT 1;
             '''
-            cur.execute(query_task, (config.STATION_CODE,))
+            cur.execute(query_task, (assigned_station_code,))
             task = cur.fetchone()
 
             conn.commit()
@@ -249,12 +309,12 @@ def read_root():
         return HTMLResponse(content=f.read())
 
 def generate_frames():
-    while True:
+    while not is_shutting_down and not stop_heartbeat.is_set():
         with bronze_landmarks.frame_lock:
             if bronze_landmarks.latest_frame is not None:
                 yield (b'--frame\r\n' b'Content-Type: image/jpeg\r\n\r\n' + bronze_landmarks.latest_frame + b'\r\n')
         time.sleep(0.04)
-
+        
 @app.get("/video_feed")
 def video_feed():
     return StreamingResponse(generate_frames(), media_type="multipart/x-mixed-replace; boundary=frame")
@@ -263,7 +323,7 @@ def video_feed():
 def get_status():
     is_running = camera_thread.is_alive() if camera_thread else False
     return {
-        "station_code": config.STATION_CODE,
+        "station_code": assigned_station_code,
         "is_running": is_running,
         "subject_id": current_subject_id if is_running else "Oczekiwanie...",
         "experiment_id": current_experiment_id if is_running else "Brak"
