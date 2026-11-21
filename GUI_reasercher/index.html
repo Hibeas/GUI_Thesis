@@ -231,6 +231,17 @@
         });
     }
 
+    function setExperimentFormLocked(locked) {
+        document.getElementById('mode-select').disabled = locked;
+        document.getElementById('mode-new').disabled = locked;
+        document.getElementById('session-select').disabled = locked;
+        document.getElementById('exp-type-new').disabled = locked;
+        document.getElementById('exp-location').disabled = locked;
+
+        document.querySelectorAll('#stations-table-body select, #stations-table-body input').forEach(el => {
+            el.disabled = locked;
+        });
+    }
 
     function renderStationsTable() {
         const tbody = document.getElementById('stations-table-body');
@@ -350,6 +361,7 @@
         if (response.ok) {
             const data = await response.json();
             activeSessionId = data.session_id;
+            setExperimentFormLocked(true);
 
             document.getElementById('display-experiment').innerText = `ACTIVE: ${expType}`;
             document.getElementById('display-details').innerText = `Start: ${data.start_time} | Stop: In progress... | Session ID: ${activeSessionId}`;
@@ -385,6 +397,7 @@
 
             alert(`Experiment (ID: ${activeSessionId}) ended at ${data.end_time}`);
             activeSessionId = null;
+            setExperimentFormLocked(false); 
             await loadSessions();
             await loadStations(true);
         } else {

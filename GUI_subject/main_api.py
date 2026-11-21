@@ -194,6 +194,14 @@ def cleanup_on_close():
     print("\nZamykanie aplikacji Stanowiska...")
     stop_heartbeat.set()
     stop_experiment_pipeline()
+
+    # Opróżnienie bufora Kafki przed zamknięciem tuneli SSH
+    try:
+        bronze_landmarks.producer.flush(timeout=2.0)
+        print("[KAFKA] Bufor wiadomości został opróżniony.")
+    except Exception as e:
+        print(f"[KAFKA WARNING] Błąd podczas opróżniania bufora: {e}")
+
     set_station_inactive()
 
     for tunnel in ssh_tunnels:
